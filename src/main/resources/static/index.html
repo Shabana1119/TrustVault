@@ -142,7 +142,7 @@
             <p id="auditMessage" role="status" aria-live="polite"></p>
 
             <ul id="auditList">
-                <li>Click Refresh Audit Trail to load activity.</li>
+                <li>Loading audit records...</li>
             </ul>
         </section>
     </main>
@@ -158,6 +158,19 @@
         const auditList = document.getElementById("auditList");
         const auditMessage = document.getElementById("auditMessage");
 
+        // Read the CSRF token from the cookie.
+        function getCsrfToken() {
+            const cookie = document.cookie
+                .split("; ")
+                .find(row => row.startsWith("XSRF-TOKEN="));
+
+            return cookie
+                ? decodeURIComponent(
+                    cookie.substring("XSRF-TOKEN=".length)
+                )
+                : null;
+        }
+
         // Load the uploaded document list.
         async function loadDocuments() {
             documentList.replaceChildren();
@@ -166,13 +179,16 @@
                 const response = await fetch("/api/documents");
 
                 if (!response.ok) {
-                    throw new Error("Could not load documents. Please sign in again.");
+                    throw new Error(
+                        "Could not load documents. Please sign in again."
+                    );
                 }
 
                 const documents = await response.json();
 
                 if (documents.length === 0) {
-                    documentList.textContent = "No documents uploaded yet.";
+                    documentList.textContent =
+                        "No documents uploaded yet.";
                     return;
                 }
 
@@ -200,7 +216,8 @@
                 }
 
                 if (file.size > 5 * 1024 * 1024) {
-                    message.textContent = "File must be 5 MB or smaller.";
+                    message.textContent =
+                        "File must be 5 MB or smaller.";
                     return;
                 }
 
@@ -210,14 +227,31 @@
                 message.textContent = "Uploading...";
 
                 try {
+                    const csrfToken = getCsrfToken();
+
+                    if (!csrfToken) {
+                        throw new Error(
+                            "Security token not found. Refresh the page and try again."
+                        );
+                    }
+
                     const response = await fetch("/api/documents", {
                         method: "POST",
+                        headers: {
+                            "X-XSRF-TOKEN": csrfToken
+                        },
                         body: formData
                     });
 
                     if (!response.ok) {
+                        if (response.status === 403) {
+                            throw new Error(
+                                "Security check failed. Refresh the page and try again."
+                            );
+                        }
+
                         throw new Error(
-                            "Upload failed. Please check the application and sign-in."
+                            "Upload failed (HTTP " + response.status + ")."
                         );
                     }
 
@@ -230,6 +264,7 @@
 
                     await loadDocuments();
                     await loadAuditLogs();
+
                 } catch (error) {
                     message.textContent = error.message;
                 }
@@ -254,7 +289,8 @@
                 const logs = await response.json();
 
                 if (logs.length === 0) {
-                    auditMessage.textContent = "No activity recorded yet.";
+                    auditMessage.textContent =
+                        "No activity recorded yet.";
                     return;
                 }
 
