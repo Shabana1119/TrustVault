@@ -1,0 +1,289 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrustVault - Secure Document Sharing</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f3f6fb;
+            color: #1e293b;
+        }
+
+        header {
+            background: #142b4a;
+            color: white;
+            padding: 22px 8%;
+        }
+
+        header h1 {
+            margin: 0;
+        }
+
+        header p {
+            color: #dbeafe;
+        }
+
+        main {
+            max-width: 900px;
+            margin: 35px auto;
+            padding: 20px;
+        }
+
+        section {
+            background: white;
+            padding: 24px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 3px 12px #00000010;
+        }
+
+        h2 {
+            color: #142b4a;
+        }
+
+        input, button {
+            padding: 10px;
+            margin: 6px 0;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        li {
+            margin: 10px 0;
+            overflow-wrap: anywhere;
+        }
+
+        #message {
+            white-space: pre-wrap;
+        }
+
+        .muted {
+            color: #64748b;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>🔐 TrustVault</h1>
+        <p>Secure Document Sharing with an Audit Trail</p>
+    </header>
+
+    <main>
+        <section>
+            <h2>Welcome to TrustVault</h2>
+            <p>Manage documents and track document activity in one place.</p>
+            <p><strong>Signed-in development user:</strong> admin</p>
+            <p class="muted">
+                Development version: access permissions and permanent storage
+                are still being developed.
+            </p>
+        </section>
+
+        <section>
+            <h2>📁 Upload a Document</h2>
+            <p>Select a small test file (maximum 5 MB).</p>
+
+            <form id="uploadForm">
+                <input type="file" id="fileInput" required>
+                <br>
+                <button type="submit">Upload Document</button>
+            </form>
+
+            <p id="message" role="status" aria-live="polite"></p>
+        </section>
+
+        <section>
+            <h2>📄 Uploaded Documents</h2>
+            <button id="refreshButton" type="button">Refresh List</button>
+            <ul id="documentList">
+                <li>Loading documents...</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>🔒 Access Control</h2>
+            <p>
+                Per-document permissions are not implemented yet.
+                This development version does not provide separate access
+                rights for different users.
+            </p>
+        </section>
+
+        <section>
+            <h2>📋 Audit Trail</h2>
+            <p>View recorded document upload activity.</p>
+
+            <button id="refreshAuditButton" type="button">
+                Refresh Audit Trail
+            </button>
+
+            <p id="auditMessage" role="status" aria-live="polite"></p>
+
+            <ul id="auditList">
+                <li>Click Refresh Audit Trail to load activity.</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        TrustVault | Secure Document Sharing Project
+    </footer>
+
+    <script>
+        const message = document.getElementById("message");
+        const fileInput = document.getElementById("fileInput");
+        const documentList = document.getElementById("documentList");
+        const auditList = document.getElementById("auditList");
+        const auditMessage = document.getElementById("auditMessage");
+
+        // Load the uploaded document list.
+        async function loadDocuments() {
+            documentList.replaceChildren();
+
+            try {
+                const response = await fetch("/api/documents");
+
+                if (!response.ok) {
+                    throw new Error("Could not load documents. Please sign in again.");
+                }
+
+                const documents = await response.json();
+
+                if (documents.length === 0) {
+                    documentList.textContent = "No documents uploaded yet.";
+                    return;
+                }
+
+                documents.forEach(function (doc) {
+                    const item = document.createElement("li");
+                    item.textContent =
+                        doc.name + " (" + doc.size + " bytes)";
+                    documentList.appendChild(item);
+                });
+            } catch (error) {
+                documentList.textContent = error.message;
+            }
+        }
+
+        // Upload a selected file.
+        document.getElementById("uploadForm")
+            .addEventListener("submit", async function (event) {
+                event.preventDefault();
+
+                const file = fileInput.files[0];
+
+                if (!file) {
+                    message.textContent = "Please select a file.";
+                    return;
+                }
+
+                if (file.size > 5 * 1024 * 1024) {
+                    message.textContent = "File must be 5 MB or smaller.";
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("file", file);
+
+                message.textContent = "Uploading...";
+
+                try {
+                    const response = await fetch("/api/documents", {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(
+                            "Upload failed. Please check the application and sign-in."
+                        );
+                    }
+
+                    const uploadedDocument = await response.json();
+
+                    message.textContent =
+                        "Upload received: " + uploadedDocument.name;
+
+                    fileInput.value = "";
+
+                    await loadDocuments();
+                    await loadAuditLogs();
+                } catch (error) {
+                    message.textContent = error.message;
+                }
+            });
+
+        // Refresh the document list.
+        document.getElementById("refreshButton")
+            .addEventListener("click", loadDocuments);
+
+        // Load audit records from the Java backend.
+        async function loadAuditLogs() {
+            auditList.replaceChildren();
+            auditMessage.textContent = "Loading audit records...";
+
+            try {
+                const response = await fetch("/api/audit");
+
+                if (!response.ok) {
+                    throw new Error("Could not load audit records.");
+                }
+
+                const logs = await response.json();
+
+                if (logs.length === 0) {
+                    auditMessage.textContent = "No activity recorded yet.";
+                    return;
+                }
+
+                auditMessage.textContent =
+                    "Recorded activities: " + logs.length;
+
+                logs.forEach(function (log) {
+                    const item = document.createElement("li");
+
+                    item.textContent =
+                        (log.time || "Time unavailable") +
+                        " — User: " + (log.username || "Unknown") +
+                        " — Action: " + (log.action || "Unknown") +
+                        " — Document: " + (log.documentName || "Unknown");
+
+                    auditList.appendChild(item);
+                });
+            } catch (error) {
+                auditMessage.textContent = error.message;
+            }
+        }
+
+        // Refresh the audit trail.
+        document.getElementById("refreshAuditButton")
+            .addEventListener("click", loadAuditLogs);
+
+        // Load both lists when the page opens.
+        loadDocuments();
+        loadAuditLogs();
+    </script>
+</body>
+</html>
