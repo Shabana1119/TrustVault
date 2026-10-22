@@ -22,9 +22,18 @@ public class SecurityConfig {
     public UserDetailsService userDetailsService(
             PasswordEncoder passwordEncoder) {
 
+        String username = System.getenv("TRUSTVAULT_USERNAME");
+        String password = System.getenv("TRUSTVAULT_PASSWORD");
+
+        if (username == null || username.isBlank()
+                || password == null || password.isBlank()) {
+            throw new IllegalStateException(
+                    "TRUSTVAULT_USERNAME and TRUSTVAULT_PASSWORD must be configured");
+        }
+
         UserDetails user = User.builder()
-                .username("admin")
-                .password(passwordEncoder.encode("TrustVault@123"))
+                .username(username)
+                .password(passwordEncoder.encode(password))
                 .roles("ADMIN")
                 .build();
 
@@ -56,7 +65,7 @@ public class SecurityConfig {
             )
             .formLogin(form -> form.permitAll());
 
-        // Generate the deferred CSRF token so the browser receives its cookie.
+        // Generate the CSRF token so the browser receives its cookie.
         http.addFilterAfter((jakarta.servlet.Filter) (request, response, chain) -> {
             jakarta.servlet.http.HttpServletRequest httpRequest =
                     (jakarta.servlet.http.HttpServletRequest) request;
