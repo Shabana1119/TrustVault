@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Column;
 import jakarta.persistence.Table;
 
@@ -21,8 +20,7 @@ public class Document {
     private String owner;
     private long size;
 
-    @Lob
-    @Column(name = "file_data", nullable = false)
+    @Column(name = "file_data", columnDefinition = "bytea", nullable = false)
     private byte[] fileData;
 
     public Document() {
