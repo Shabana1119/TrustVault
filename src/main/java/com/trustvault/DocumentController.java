@@ -7,8 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,13 +16,12 @@ import java.util.Map;
 @RestController
 public class DocumentController {
 
-    private final List<Map<String, String>> documents =
-            new ArrayList<>();
+    private final DocumentRepository documentRepository;
 
-    private final List<Map<String, String>> auditLogs =
-            new ArrayList<>();
-
-    private int nextId = 1;
+    public DocumentController(
+            DocumentRepository documentRepository) {
+        this.documentRepository = documentRepository;
+    }
 
     @GetMapping("/api/status")
     public Map<String, String> getStatus() {
@@ -38,37 +37,38 @@ public class DocumentController {
 
         String username = authentication.getName();
 
-        synchronized (documents) {
-            return documents.stream()
-                    .filter(document ->
-                            username.equals(document.get("owner")))
-                    .map(document -> {
-                        Map<String, String> result =
-                                new LinkedHashMap<>(document);
-                        result.remove("owner");
-                        return result;
-                    })
-                    .toList();
-        }
+        return documentRepository.findByOwner(username)
+                .stream()
+                .map(document -> {
+                    Map<String, String> result =
+                            new LinkedHashMap<>();
+
+                    result.put("id",
+                            String.valueOf(document.getId()));
+                    result.put("name", document.getName());
+                    result.put("size",
+                            String.valueOf(document.getSize()));
+
+                    return result;
+                })
+                .toList();
     }
 
     @PostMapping("/api/documents")
     public Map<String, String> uploadDocument(
             @RequestParam("file") MultipartFile file,
-            Authentication authentication) {
+            Authentication authentication) throws IOException {
 
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Please select a file"
-            );
+                    "Please select a file");
         }
 
         if (file.getSize() > 5L * 1024 * 1024) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "File must be 5 MB or smaller"
-            );
+                    "File must be 5 MB or smaller");
         }
 
         String originalName = file.getOriginalFilename();
@@ -77,46 +77,33 @@ public class DocumentController {
             originalName = "document";
         }
 
-        // Keep only the filename, not any supplied directory path.
         originalName = originalName.replace('\\', '/');
         originalName = originalName.substring(
-                originalName.lastIndexOf('/') + 1
-        );
+                originalName.lastIndexOf('/') + 1);
 
         if (originalName.isBlank()
                 || originalName.equals(".")
                 || originalName.equals("..")) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Invalid filename"
-            );
+                    "Invalid filename");
         }
 
-        String username = authentication.getName();
-        Map<String, String> document = new LinkedHashMap<>();
+        Document document = new Document();
+        document.setName(originalName);
+        document.setOwner(authentication.getName());
+        document.setSize(file.getSize());
+        document.setFileData(file.getBytes());
 
-        synchronized (documents) {
-            document.put("id", String.valueOf(nextId++));
-            document.put("name", originalName);
-            document.put("size", String.valueOf(file.getSize()));
-            document.put("owner", username);
+        Document savedDocument =
+                documentRepository.save(document);
 
-            documents.add(document);
-        }
-
-        Map<String, String> log = new LinkedHashMap<>();
-        log.put("action", "UPLOAD");
-        log.put("documentName", originalName);
-        log.put("username", username);
-        log.put("time", LocalDateTime.now().toString());
-
-        synchronized (auditLogs) {
-            auditLogs.add(log);
-        }
-
-        Map<String, String> result =
-                new LinkedHashMap<>(document);
-        result.remove("owner");
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put("id",
+                String.valueOf(savedDocument.getId()));
+        result.put("name", savedDocument.getName());
+        result.put("size",
+                String.valueOf(savedDocument.getSize()));
 
         return result;
     }
@@ -125,15 +112,7 @@ public class DocumentController {
     public List<Map<String, String>> getAuditLogs(
             Authentication authentication) {
 
-        String username = authentication.getName();
-
-        synchronized (auditLogs) {
-            return auditLogs.stream()
-                    .filter(log ->
-                            username.equals(log.get("username")))
-                    .map(LinkedHashMap::new)
-                    .map(log -> (Map<String, String>) log)
-                    .toList();
-        }
+        // Audit storage will be added in the next step.
+        return List.of();
     }
 }
