@@ -8,15 +8,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CsrfToken;
-import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import java.io.IOException;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.web.servlet.support.RequestContextUtils;
 
 @Configuration
 public class SecurityConfig {
@@ -48,33 +42,5 @@ public class SecurityConfig {
             .formLogin(form -> form.permitAll());
 
         return http.build();
-    }
-
-    @Bean
-    public FilterRegistrationBean<OncePerRequestFilter> csrfTokenFilter() {
-        FilterRegistrationBean<OncePerRequestFilter> registration =
-                new FilterRegistrationBean<>();
-
-        registration.setFilter(new OncePerRequestFilter() {
-            @Override
-            protected void doFilterInternal(
-                    HttpServletRequest request,
-                    HttpServletResponse response,
-                    FilterChain filterChain)
-                    throws ServletException, IOException {
-
-                CsrfToken token = (CsrfToken) request.getAttribute(
-                        CsrfToken.class.getName());
-
-                if (token != null) {
-                    token.getToken();
-                }
-
-                filterChain.doFilter(request, response);
-            }
-        });
-
-        registration.setOrder(1);
-        return registration;
     }
 }
