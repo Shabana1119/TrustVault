@@ -17,10 +17,13 @@ import java.util.Map;
 public class DocumentController {
 
     private final DocumentRepository documentRepository;
+    private final AuditLogRepository auditLogRepository;
 
     public DocumentController(
-            DocumentRepository documentRepository) {
+            DocumentRepository documentRepository,
+            AuditLogRepository auditLogRepository) {
         this.documentRepository = documentRepository;
+        this.auditLogRepository = auditLogRepository;
     }
 
     @GetMapping("/api/status")
@@ -98,12 +101,19 @@ public class DocumentController {
         Document savedDocument =
                 documentRepository.save(document);
 
+        AuditLog log = new AuditLog();
+        log.setUsername(authentication.getName());
+        log.setAction("UPLOAD");
+        log.setDocumentName(savedDocument.getName());
+        log.setTimestamp(LocalDateTime.now());
+
+        auditLogRepository.save(log);
+
         Map<String, String> result = new LinkedHashMap<>();
         result.put("id",
                 String.valueOf(savedDocument.getId()));
         result.put("name", savedDocument.getName());
-        result.put("size",
-                String.valueOf(savedDocument.getSize()));
+        result.put("size", String.valueOf(savedDocument.getSize()));
 
         return result;
     }
@@ -112,7 +122,21 @@ public class DocumentController {
     public List<Map<String, String>> getAuditLogs(
             Authentication authentication) {
 
-        // Audit storage will be added in the next step.
-        return List.of();
+        return auditLogRepository
+                .findAllByOrderByTimestampDesc()
+                .stream()
+                .map(log -> {
+                    Map<String, String> result =
+                            new LinkedHashMap<>();
+
+                    result.put("username", log.getUsername());
+                    result.put("action", log.getAction());
+                    result.put("documentName", log.getDocumentName());
+                    result.put("timestamp",
+                            log.getTimestamp().toString());
+
+                    return result;
+                })
+                .toList();
     }
 }
