@@ -25,10 +25,18 @@ public class SecurityConfig {
                 .ignoringRequestMatchers("/api/**")
             )
             .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll()
+                .requestMatchers(
+                    "/",
+                    "/index.html",
+                    "/favicon.ico",
+                    "/css/**",
+                    "/js/**",
+                    "/images/**",
+                    "/api/status"
+                ).permitAll()
+                .anyRequest().authenticated()
             )
-            .formLogin(form -> form.disable())
-            .httpBasic(basic -> basic.disable());
+            .formLogin(form -> form.permitAll());
 
         return http.build();
     }
