@@ -32,11 +32,15 @@ public class SecurityConfig {
                     "/css/**",
                     "/js/**",
                     "/images/**",
+                    "/login",
                     "/api/status"
                 ).permitAll()
                 .anyRequest().authenticated()
             )
-            .formLogin(form -> form.permitAll());
+            .formLogin(form -> form
+                .defaultSuccessUrl("/", true)
+                .permitAll()
+            );
 
         return http.build();
     }
