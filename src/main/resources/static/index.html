@@ -1,4 +1,4 @@
-```html
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,11 +7,16 @@
     <title>TrustVault - Secure Document Sharing</title>
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
             font-family: Arial, sans-serif;
             background: #f3f6fb;
             color: #1e293b;
+            line-height: 1.6;
         }
 
         header {
@@ -22,15 +27,17 @@
 
         header h1 {
             margin: 0;
+            font-size: 32px;
         }
 
         header p {
             color: #dbeafe;
+            margin-bottom: 0;
         }
 
         main {
             max-width: 900px;
-            margin: 35px auto;
+            margin: 30px auto;
             padding: 20px;
         }
 
@@ -44,11 +51,17 @@
 
         h2 {
             color: #142b4a;
+            margin-top: 0;
         }
 
         input, button {
             padding: 10px;
             margin: 6px 4px 6px 0;
+            font-size: 14px;
+        }
+
+        input[type="file"] {
+            max-width: 100%;
         }
 
         button {
@@ -63,17 +76,31 @@
             background: #1d4ed8;
         }
 
+        button:focus-visible,
+        input:focus-visible {
+            outline: 2px solid #0f766e;
+            outline-offset: 2px;
+        }
+
         li {
-            margin: 10px 0;
+            margin: 12px 0;
             overflow-wrap: anywhere;
         }
 
         #message, #auditMessage {
             white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }
 
         .muted {
             color: #64748b;
+        }
+
+        .notice {
+            padding: 12px;
+            background: #eff6ff;
+            border-left: 4px solid #2563eb;
+            border-radius: 6px;
         }
 
         footer {
@@ -81,24 +108,41 @@
             padding: 20px;
             color: #64748b;
         }
+
+        @media (max-width: 600px) {
+            main {
+                margin: 12px auto;
+                padding: 12px;
+            }
+
+            section {
+                padding: 18px;
+            }
+
+            header {
+                padding: 20px;
+            }
+        }
     </style>
 </head>
 
 <body>
     <header>
         <h1>🔐 TrustVault</h1>
-        <p>Secure Document Sharing with an Audit Trail</p>
+        <p>Secure Document Management with an Audit Trail</p>
     </header>
 
     <main>
         <section>
             <h2>Welcome to TrustVault</h2>
-            <p>Manage documents and track document activity in one place.</p>
-            <p><strong>Signed-in development user:</strong> admin</p>
+            <p>
+                Upload documents, access your files, and review recorded
+                document activity in one place.
+            </p>
+
             <p class="muted">
-                Documents are restricted to their owners in the current
-                implementation. Sharing with additional users is not
-                implemented yet.
+                Document access depends on the permissions enforced by
+                the backend.
             </p>
         </section>
 
@@ -107,7 +151,12 @@
             <p>Select a file with a maximum size of 5 MB.</p>
 
             <form id="uploadForm">
-                <input type="file" id="fileInput" required>
+                <input
+                    type="file"
+                    id="fileInput"
+                    aria-label="Choose a document"
+                    required
+                >
                 <br>
                 <button type="submit">Upload Document</button>
             </form>
@@ -117,7 +166,15 @@
 
         <section>
             <h2>📄 Uploaded Documents</h2>
-            <button id="refreshButton" type="button">Refresh List</button>
+            <p class="muted">
+                View or download documents that your account is permitted
+                to access.
+            </p>
+
+            <button id="refreshButton" type="button">
+                Refresh List
+            </button>
+
             <ul id="documentList">
                 <li>Loading documents...</li>
             </ul>
@@ -125,16 +182,18 @@
 
         <section>
             <h2>🔒 Access Control</h2>
-            <p>
-                The current backend allows authenticated owners to access
-                their own documents. Sharing with selected additional
-                users is not implemented yet.
+            <p class="notice">
+                The current implementation is intended to restrict access
+                according to backend permissions. Sharing documents with
+                selected additional users is not implemented yet.
             </p>
         </section>
 
         <section>
             <h2>📋 Audit Trail</h2>
-            <p>Review recorded upload, view, and download activities.</p>
+            <p>
+                Review recorded upload, view, and download activities.
+            </p>
 
             <button id="refreshAuditButton" type="button">
                 Refresh Audit Trail
@@ -149,7 +208,7 @@
     </main>
 
     <footer>
-        TrustVault | Secure Document Sharing Project
+        TrustVault | Secure Document Management Project
     </footer>
 
     <script>
@@ -162,7 +221,9 @@
         function getCsrfToken() {
             const cookie = document.cookie
                 .split("; ")
-                .find(row => row.startsWith("XSRF-TOKEN="));
+                .find(function (row) {
+                    return row.startsWith("XSRF-TOKEN=");
+                });
 
             return cookie
                 ? decodeURIComponent(
@@ -171,44 +232,63 @@
                 : null;
         }
 
+        function showListMessage(list, text) {
+            list.replaceChildren();
+
+            const item = document.createElement("li");
+            item.textContent = text;
+            list.appendChild(item);
+        }
+
         async function loadDocuments() {
-            documentList.replaceChildren();
+            showListMessage(documentList, "Loading documents...");
 
             try {
-                const response = await fetch("/api/documents");
+                const response = await fetch("/api/documents", {
+                    credentials: "same-origin"
+                });
 
                 if (!response.ok) {
                     throw new Error(
-                        "Could not load documents. Please sign in again."
+                        response.status === 401 ||
+                        response.status === 403
+                            ? "Access denied. Please sign in and try again."
+                            : "Could not load documents (HTTP " +
+                              response.status + ")."
                     );
                 }
 
                 const documents = await response.json();
+                documentList.replaceChildren();
 
-                if (documents.length === 0) {
-                    documentList.textContent =
-                        "No documents uploaded yet.";
+                if (!Array.isArray(documents) || documents.length === 0) {
+                    showListMessage(
+                        documentList,
+                        "No documents uploaded yet."
+                    );
                     return;
                 }
 
                 documents.forEach(function (doc) {
                     const item = document.createElement("li");
-
                     const details = document.createElement("span");
+
                     details.textContent =
-                        doc.name + " (" + doc.size + " bytes) ";
+                        (doc.name || "Unnamed document") +
+                        " (" + (doc.size ?? "unknown") + " bytes) ";
+
+                    item.appendChild(details);
 
                     const viewButton = document.createElement("button");
                     viewButton.type = "button";
                     viewButton.textContent = "View";
 
                     viewButton.addEventListener("click", function () {
-                        window.open(
+                        const url =
                             "/api/documents/" +
-                            encodeURIComponent(doc.id) + "/view",
-                            "_blank",
-                            "noopener"
-                        );
+                            encodeURIComponent(doc.id) + "/view";
+
+                        window.open(url, "_blank", "noopener,noreferrer");
                     });
 
                     const downloadButton = document.createElement("button");
@@ -221,14 +301,13 @@
                             encodeURIComponent(doc.id) + "/download";
                     });
 
-                    item.appendChild(details);
                     item.appendChild(viewButton);
                     item.appendChild(downloadButton);
                     documentList.appendChild(item);
                 });
 
             } catch (error) {
-                documentList.textContent = error.message;
+                showListMessage(documentList, error.message);
             }
         }
 
@@ -259,12 +338,14 @@
 
                     if (!csrfToken) {
                         throw new Error(
-                            "Security token not found. Refresh the page and try again."
+                            "Security token not found. Refresh the page " +
+                            "and try again."
                         );
                     }
 
                     const response = await fetch("/api/documents", {
                         method: "POST",
+                        credentials: "same-origin",
                         headers: {
                             "X-XSRF-TOKEN": csrfToken
                         },
@@ -272,9 +353,11 @@
                     });
 
                     if (!response.ok) {
-                        if (response.status === 403) {
+                        if (response.status === 401 ||
+                            response.status === 403) {
                             throw new Error(
-                                "Security check failed. Refresh the page and try again."
+                                "Access denied or security check failed. " +
+                                "Refresh the page and try again."
                             );
                         }
 
@@ -286,7 +369,8 @@
                     const uploadedDocument = await response.json();
 
                     message.textContent =
-                        "Upload successful: " + uploadedDocument.name;
+                        "Upload successful: " +
+                        (uploadedDocument.name || file.name);
 
                     fileInput.value = "";
 
@@ -302,21 +386,31 @@
             .addEventListener("click", loadDocuments);
 
         async function loadAuditLogs() {
-            auditList.replaceChildren();
-            auditMessage.textContent = "Loading audit records...";
+            showListMessage(auditList, "Loading audit records...");
+            auditMessage.textContent = "";
 
             try {
-                const response = await fetch("/api/audit");
+                const response = await fetch("/api/audit", {
+                    credentials: "same-origin"
+                });
 
                 if (!response.ok) {
-                    throw new Error("Could not load audit records.");
+                    throw new Error(
+                        "Could not load audit records (HTTP " +
+                        response.status + ")."
+                    );
                 }
 
                 const logs = await response.json();
+                auditList.replaceChildren();
 
-                if (logs.length === 0) {
+                if (!Array.isArray(logs) || logs.length === 0) {
                     auditMessage.textContent =
                         "No activity recorded yet.";
+                    showListMessage(
+                        auditList,
+                        "No audit records available."
+                    );
                     return;
                 }
 
@@ -326,7 +420,6 @@
                 logs.forEach(function (log) {
                     const item = document.createElement("li");
 
-                    // The API returns the date and time in "time".
                     const formattedTime = log.time
                         ? String(log.time)
                             .replace("T", " ")
@@ -337,13 +430,15 @@
                         formattedTime +
                         " — User: " + (log.username || "Unknown") +
                         " — Action: " + (log.action || "Unknown") +
-                        " — Document: " + (log.documentName || "Unknown");
+                        " — Document: " +
+                        (log.documentName || "Unknown");
 
                     auditList.appendChild(item);
                 });
 
             } catch (error) {
                 auditMessage.textContent = error.message;
+                showListMessage(auditList, error.message);
             }
         }
 
@@ -355,4 +450,3 @@
     </script>
 </body>
 </html>
-```
