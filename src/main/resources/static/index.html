@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -48,7 +48,7 @@
 
         input, button {
             padding: 10px;
-            margin: 6px 0;
+            margin: 6px 4px 6px 0;
         }
 
         button {
@@ -68,7 +68,7 @@
             overflow-wrap: anywhere;
         }
 
-        #message {
+        #message, #auditMessage {
             white-space: pre-wrap;
         }
 
@@ -96,14 +96,15 @@
             <p>Manage documents and track document activity in one place.</p>
             <p><strong>Signed-in development user:</strong> admin</p>
             <p class="muted">
-                Development version: access permissions and permanent storage
-                are still being developed.
+                Documents are restricted to their owners in the current
+                implementation. Sharing with additional users is not
+                implemented yet.
             </p>
         </section>
 
         <section>
             <h2>📁 Upload a Document</h2>
-            <p>Select a small test file (maximum 5 MB).</p>
+            <p>Select a file with a maximum size of 5 MB.</p>
 
             <form id="uploadForm">
                 <input type="file" id="fileInput" required>
@@ -125,15 +126,15 @@
         <section>
             <h2>🔒 Access Control</h2>
             <p>
-                Per-document permissions are not implemented yet.
-                This development version does not provide separate access
-                rights for different users.
+                The current backend allows authenticated owners to access
+                their own documents. Sharing with selected additional
+                users is not implemented yet.
             </p>
         </section>
 
         <section>
             <h2>📋 Audit Trail</h2>
-            <p>View recorded document upload activity.</p>
+            <p>Review recorded upload, view, and download activities.</p>
 
             <button id="refreshAuditButton" type="button">
                 Refresh Audit Trail
@@ -158,7 +159,6 @@
         const auditList = document.getElementById("auditList");
         const auditMessage = document.getElementById("auditMessage");
 
-        // Read the CSRF token from the cookie.
         function getCsrfToken() {
             const cookie = document.cookie
                 .split("; ")
@@ -171,7 +171,6 @@
                 : null;
         }
 
-        // Load the uploaded document list.
         async function loadDocuments() {
             documentList.replaceChildren();
 
@@ -194,16 +193,45 @@
 
                 documents.forEach(function (doc) {
                     const item = document.createElement("li");
-                    item.textContent =
-                        doc.name + " (" + doc.size + " bytes)";
+
+                    const details = document.createElement("span");
+                    details.textContent =
+                        doc.name + " (" + doc.size + " bytes) ";
+
+                    const viewButton = document.createElement("button");
+                    viewButton.type = "button";
+                    viewButton.textContent = "View";
+
+                    viewButton.addEventListener("click", function () {
+                        window.open(
+                            "/api/documents/" +
+                            encodeURIComponent(doc.id) + "/view",
+                            "_blank",
+                            "noopener"
+                        );
+                    });
+
+                    const downloadButton = document.createElement("button");
+                    downloadButton.type = "button";
+                    downloadButton.textContent = "Download";
+
+                    downloadButton.addEventListener("click", function () {
+                        window.location.href =
+                            "/api/documents/" +
+                            encodeURIComponent(doc.id) + "/download";
+                    });
+
+                    item.appendChild(details);
+                    item.appendChild(viewButton);
+                    item.appendChild(downloadButton);
                     documentList.appendChild(item);
                 });
+
             } catch (error) {
                 documentList.textContent = error.message;
             }
         }
 
-        // Upload a selected file.
         document.getElementById("uploadForm")
             .addEventListener("submit", async function (event) {
                 event.preventDefault();
@@ -258,7 +286,7 @@
                     const uploadedDocument = await response.json();
 
                     message.textContent =
-                        "Upload received: " + uploadedDocument.name;
+                        "Upload successful: " + uploadedDocument.name;
 
                     fileInput.value = "";
 
@@ -270,11 +298,9 @@
                 }
             });
 
-        // Refresh the document list.
         document.getElementById("refreshButton")
             .addEventListener("click", loadDocuments);
 
-        // Load audit records from the Java backend.
         async function loadAuditLogs() {
             auditList.replaceChildren();
             auditMessage.textContent = "Loading audit records...";
@@ -300,26 +326,33 @@
                 logs.forEach(function (log) {
                     const item = document.createElement("li");
 
+                    // The API returns the date and time in "time".
+                    const formattedTime = log.time
+                        ? String(log.time)
+                            .replace("T", " ")
+                            .split(".")[0]
+                        : "Time unavailable";
+
                     item.textContent =
-                        (log.timestamp || "Time unavailable") +
+                        formattedTime +
                         " — User: " + (log.username || "Unknown") +
                         " — Action: " + (log.action || "Unknown") +
                         " — Document: " + (log.documentName || "Unknown");
 
                     auditList.appendChild(item);
                 });
+
             } catch (error) {
                 auditMessage.textContent = error.message;
             }
         }
 
-        // Refresh the audit trail.
         document.getElementById("refreshAuditButton")
             .addEventListener("click", loadAuditLogs);
 
-        // Load both lists when the page opens.
         loadDocuments();
         loadAuditLogs();
     </script>
 </body>
 </html>
+```

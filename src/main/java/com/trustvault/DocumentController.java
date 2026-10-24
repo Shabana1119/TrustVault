@@ -1,7 +1,10 @@
 
 package com.trustvault;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,20 +41,13 @@ public class DocumentController {
     public List<Map<String, String>> getDocuments(
             Authentication authentication) {
 
-        String username = authentication.getName();
-
-        return documentRepository.findByOwner(username)
+        return documentRepository.findByOwner(authentication.getName())
                 .stream()
                 .map(document -> {
-                    Map<String, String> result =
-                            new LinkedHashMap<>();
-
-                    result.put("id",
-                            String.valueOf(document.getId()));
+                    Map<String, String> result = new LinkedHashMap<>();
+                    result.put("id", String.valueOf(document.getId()));
                     result.put("name", document.getName());
-                    result.put("size",
-                            String.valueOf(document.getSize()));
-
+                    result.put("size", String.valueOf(document.getSize()));
                     return result;
                 })
                 .toList();
@@ -65,76 +61,183 @@ public class DocumentController {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Please select a file");
+                    "Please select a file"
+            );
         }
 
         if (file.getSize() > 5L * 1024 * 1024) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "File must be 5 MB or smaller");
+                    "File must be 5 MB or smaller"
+            );
         }
 
-        String originalName = file.getOriginalFilename();
+        String name = file.getOriginalFilename();
 
-        if (originalName == null || originalName.isBlank()) {
-            originalName = "document";
+        if (name == null || name.isBlank()) {
+            name = "document";
         }
 
-        originalName = originalName.replace('\\', '/');
-        originalName = originalName.substring(
-                originalName.lastIndexOf('/') + 1);
+        name = name.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1);
 
-        if (originalName.isBlank()
-                || originalName.equals(".")
-                || originalName.equals("..")) {
+        if (name.isBlank() || name.equals(".") || name.equals("..")) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Invalid filename");
+                    "Invalid filename"
+            );
         }
 
         Document document = new Document();
-        document.setName(originalName);
+        document.setName(name);
         document.setOwner(authentication.getName());
         document.setSize(file.getSize());
         document.setFileData(file.getBytes());
 
-        Document savedDocument =
-                documentRepository.save(document);
+        Document saved = documentRepository.save(document);
+
+        recordAudit(
+                authentication.getName(),
+                "UPLOAD",
+                saved.getName()
+        );
+
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put("id", String.valueOf(saved.getId()));
+        result.put("name", saved.getName());
+        result.put("size", String.valueOf(saved.getSize()));
+
+        return result;
+    }
+
+    @GetMapping("/api/documents/{id}/view")
+    public ResponseEntity<byte[]> viewDocument(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        Document document = getAuthorizedDocument(id, authentication);
+
+        recordAudit(
+                authentication.getName(),
+                "VIEW",
+                document.getName()
+        );
+
+        String fileName = document.getName().toLowerCase();
+        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+
+        if (fileName.endsWith(".png")) {
+            mediaType = MediaType.IMAGE_PNG;
+        } else if (fileName.endsWith(".jpg")
+                || fileName.endsWith(".jpeg")) {
+            mediaType = MediaType.IMAGE_JPEG;
+        } else if (fileName.endsWith(".gif")) {
+            mediaType = MediaType.IMAGE_GIF;
+        } else if (fileName.endsWith(".pdf")) {
+            mediaType = MediaType.APPLICATION_PDF;
+        } else if (fileName.endsWith(".txt")) {
+            mediaType = MediaType.TEXT_PLAIN;
+        }
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\""
+                                + safeHeaderName(document.getName()) + "\""
+                )
+                .body(document.getFileData());
+    }
+
+    @GetMapping("/api/documents/{id}/download")
+    public ResponseEntity<byte[]> downloadDocument(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        Document document = getAuthorizedDocument(id, authentication);
+
+        recordAudit(
+                authentication.getName(),
+                "DOWNLOAD",
+                document.getName()
+        );
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\""
+                                + safeHeaderName(document.getName()) + "\""
+                )
+                .body(document.getFileData());
+    }
+
+    private Document getAuthorizedDocument(
+            Long id,
+            Authentication authentication) {
+
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Document not found"
+                ));
+
+        if (!document.getOwner().equals(authentication.getName())) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Document not found"
+            );
+        }
+
+        return document;
+    }
+
+    private String safeHeaderName(String name) {
+        return name.replace("\"", "")
+                .replace("\r", "")
+                .replace("\n", "");
+    }
+
+    private void recordAudit(
+            String username,
+            String action,
+            String documentName) {
 
         AuditLog log = new AuditLog();
-        log.setUsername(authentication.getName());
-        log.setAction("UPLOAD");
-        log.setDocumentName(savedDocument.getName());
+        log.setUsername(username);
+        log.setAction(action);
+        log.setDocumentName(documentName);
         log.setTimestamp(LocalDateTime.now());
 
         auditLogRepository.save(log);
-
-        Map<String, String> result = new LinkedHashMap<>();
-        result.put("id",
-                String.valueOf(savedDocument.getId()));
-        result.put("name", savedDocument.getName());
-        result.put("size", String.valueOf(savedDocument.getSize()));
-
-        return result;
     }
 
     @GetMapping("/api/audit")
     public List<Map<String, String>> getAuditLogs(
             Authentication authentication) {
 
-        return auditLogRepository
-                .findAllByOrderByTimestampDesc()
-                .stream()
-                .map(log -> {
-                    Map<String, String> result =
-                            new LinkedHashMap<>();
+        List<AuditLog> logs;
 
+        if (authentication.getAuthorities().stream()
+                .anyMatch(authority ->
+                        authority.getAuthority().equals("ROLE_ADMIN"))) {
+
+            logs = auditLogRepository.findAllByOrderByTimestampDesc();
+
+        } else {
+            logs = auditLogRepository
+                    .findByUsernameOrderByTimestampDesc(
+                            authentication.getName()
+                    );
+        }
+
+        return logs.stream()
+                .map(log -> {
+                    Map<String, String> result = new LinkedHashMap<>();
                     result.put("username", log.getUsername());
                     result.put("action", log.getAction());
                     result.put("documentName", log.getDocumentName());
-                    result.put("timestamp",
-                            log.getTimestamp().toString());
-
+                    result.put("time", log.getTimestamp().toString());
                     return result;
                 })
                 .toList();

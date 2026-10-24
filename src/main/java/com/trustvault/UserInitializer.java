@@ -27,18 +27,19 @@ public class UserInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+
         if (username.isBlank() || password.isBlank()) {
             throw new IllegalStateException(
                     "TrustVault account environment variables are missing");
         }
 
-        if (userRepository.findByUsername(username).isEmpty()) {
-            AppUser user = new AppUser();
-            user.setUsername(username);
-            user.setPassword(passwordEncoder.encode(password));
-            user.setRole("ADMIN");
+        AppUser user = userRepository.findByUsername(username)
+                .orElseGet(AppUser::new);
 
-            userRepository.save(user);
-        }
+        user.setUsername(username);
+        user.setPassword(passwordEncoder.encode(password));
+        user.setRole("ADMIN");
+
+        userRepository.save(user);
     }
 }

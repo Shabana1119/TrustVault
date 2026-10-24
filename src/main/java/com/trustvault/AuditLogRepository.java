@@ -8,4 +8,6 @@ public interface AuditLogRepository
         extends JpaRepository<AuditLog, Long> {
 
     List<AuditLog> findAllByOrderByTimestampDesc();
+
+    List<AuditLog> findByUsernameOrderByTimestampDesc(String username);
 }
