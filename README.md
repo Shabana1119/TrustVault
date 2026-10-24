@@ -1,80 +1,51 @@
 # TrustVault
 
-TrustVault is a document-sharing web application demo that records document upload activity. It aims to demonstrate authentication, document ownership, and audit logging.
+TrustVault is a document management web application designed to demonstrate controlled document access and an audit trail for tracking document activity.
 
 ## Live Demo
-
 - **Website:** https://trustvault-mcbw.onrender.com/
 - **GitHub Repository:** https://github.com/Shabana1119/TrustVault
 
-## Current Features
-
-- Login using a configured administrator account
-- Upload a file up to 5 MB
+## Features
+- Login using configured application credentials
+- Upload files up to 5 MB
 - Display uploaded document names and sizes
-- Record upload activity in an audit trail
-- Record the username, action, document name, and timestamp
-- Basic owner-based filtering in the document controller
+- View and download supported documents
+- Store document metadata and audit records in PostgreSQL
+- Record document actions, usernames, and timestamps
+- Apply basic document-owner filtering
 
 ## Technology Stack
-
-- Java 21
+- Java
 - Spring Boot
 - Spring Security
+- PostgreSQL
 - HTML, CSS, and JavaScript
 - Maven
 - Docker
 - Render
 
 ## Run Locally
-
-### Requirements
-
-- JDK 21
-- Git
-
-### Steps
-
-1. Clone the repository:
-
+1. Install a compatible JDK and Git.
+2. Clone the repository:
    ```bash
    git clone https://github.com/Shabana1119/TrustVault.git
-   ```
-
-2. Open the project folder:
-
-   ```bash
    cd TrustVault
    ```
-
-3. Configure your own demo login credentials in PowerShell:
-
-   ```powershell
-   $env:TRUSTVAULT_USERNAME="admin"
-   $env:TRUSTVAULT_PASSWORD="ChooseYourOwnStrongPassword"
-   ```
-
-   Replace the example password with your own strong password. Do not commit passwords to GitHub.
-
-4. Start the application:
-
+3. Configure the PostgreSQL connection using environment variables:
+   `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`.
+4. Configure the application's login credentials according to its security configuration. Do not commit passwords or other secrets.
+5. Start the application on Windows:
    ```powershell
    .\mvnw.cmd spring-boot:run
    ```
+6. Open http://localhost:8081 in your browser.
 
-5. Open http://localhost:8081 in your browser.
-
-## Current Limitations
-
-This is an early development demo, not a production-ready secure document-sharing system.
-
-- Only one configured administrator account is available.
-- Document contents are not permanently stored by the current implementation.
-- Document metadata and audit records are held in memory and may be lost when the application restarts.
-- Separate user accounts and complete document-level permissions are not implemented.
-- Secure document downloads and permanent audit storage are not implemented.
-- Owner-based filtering has not yet been verified with multiple independent users.
+## Limitations
+- The current demo does not yet implement sharing with selected individual users.
+- Complete multi-user, document-level access permissions have not been implemented.
+- The audit trail records application actions; it is not a tamper-proof audit system.
+- Further security testing is needed before production use.
 
 ## Security Notice
-
-Do not upload confidential or sensitive documents. Further implementation and security testing are required before using TrustVault for real document sharing.
+This project is a learning and demonstration application. Do not upload confidential documents or use it as a production secure-sharing service without additional security controls and testing.
