@@ -76,6 +76,11 @@
             background: #1d4ed8;
         }
 
+        button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+
         button:focus-visible,
         input:focus-visible {
             outline: 2px solid #0f766e;
@@ -139,10 +144,9 @@
                 Upload documents, access your files, and review recorded
                 document activity in one place.
             </p>
-
             <p class="muted">
-                Document access depends on the permissions enforced by
-                the backend.
+                This is a public demonstration. Upload sample files only.
+                Access control must be enforced by a properly secured backend.
             </p>
         </section>
 
@@ -158,7 +162,9 @@
                     required
                 >
                 <br>
-                <button type="submit">Upload Document</button>
+                <button id="uploadButton" type="submit">
+                    Upload Document
+                </button>
             </form>
 
             <p id="message" role="status" aria-live="polite"></p>
@@ -167,8 +173,7 @@
         <section>
             <h2>📄 Uploaded Documents</h2>
             <p class="muted">
-                View or download documents that your account is permitted
-                to access.
+                View or download documents available to this demo.
             </p>
 
             <button id="refreshButton" type="button">
@@ -183,17 +188,15 @@
         <section>
             <h2>🔒 Access Control</h2>
             <p class="notice">
-                The current implementation is intended to restrict access
-                according to backend permissions. Sharing documents with
-                selected additional users is not implemented yet.
+                Document access must be checked by the backend.
+                Sharing documents with selected additional users is not
+                implemented in this demo.
             </p>
         </section>
 
         <section>
             <h2>📋 Audit Trail</h2>
-            <p>
-                Review recorded upload, view, and download activities.
-            </p>
+            <p>Review recorded upload, view, and download activities.</p>
 
             <button id="refreshAuditButton" type="button">
                 Refresh Audit Trail
@@ -214,23 +217,10 @@
     <script>
         const message = document.getElementById("message");
         const fileInput = document.getElementById("fileInput");
+        const uploadButton = document.getElementById("uploadButton");
         const documentList = document.getElementById("documentList");
         const auditList = document.getElementById("auditList");
         const auditMessage = document.getElementById("auditMessage");
-
-        function getCsrfToken() {
-            const cookie = document.cookie
-                .split("; ")
-                .find(function (row) {
-                    return row.startsWith("XSRF-TOKEN=");
-                });
-
-            return cookie
-                ? decodeURIComponent(
-                    cookie.substring("XSRF-TOKEN=".length)
-                )
-                : null;
-        }
 
         function showListMessage(list, text) {
             list.replaceChildren();
@@ -245,16 +235,14 @@
 
             try {
                 const response = await fetch("/api/documents", {
+                    method: "GET",
                     credentials: "same-origin"
                 });
 
                 if (!response.ok) {
                     throw new Error(
-                        response.status === 401 ||
-                        response.status === 403
-                            ? "Access denied. Please sign in and try again."
-                            : "Could not load documents (HTTP " +
-                              response.status + ")."
+                        "Could not load documents (HTTP " +
+                        response.status + ")."
                     );
                 }
 
@@ -284,8 +272,7 @@
                     viewButton.textContent = "View";
 
                     viewButton.addEventListener("click", function () {
-                        const url =
-                            "/api/documents/" +
+                        const url = "/api/documents/" +
                             encodeURIComponent(doc.id) + "/view";
 
                         window.open(url, "_blank", "noopener,noreferrer");
@@ -332,37 +319,23 @@
                 formData.append("file", file);
 
                 message.textContent = "Uploading...";
+                uploadButton.disabled = true;
 
                 try {
-                    const csrfToken = getCsrfToken();
-
-                    if (!csrfToken) {
-                        throw new Error(
-                            "Security token not found. Refresh the page " +
-                            "and try again."
-                        );
-                    }
-
+                    // No CSRF token header is sent by this demo frontend.
+                    // The backend must be configured consistently.
                     const response = await fetch("/api/documents", {
                         method: "POST",
                         credentials: "same-origin",
-                        headers: {
-                            "X-XSRF-TOKEN": csrfToken
-                        },
                         body: formData
                     });
 
                     if (!response.ok) {
-                        if (response.status === 401 ||
-                            response.status === 403) {
-                            throw new Error(
-                                "Access denied or security check failed. " +
-                                "Refresh the page and try again."
-                            );
-                        }
+                        const errorText = await response.text();
 
                         throw new Error(
-                            "Upload failed (HTTP " + response.status + ")."
+                            "Upload failed (HTTP " + response.status + "). " +
+                            (errorText ? errorText.slice(0, 300) : "")
                         );
                     }
 
@@ -378,7 +351,10 @@
                     await loadAuditLogs();
 
                 } catch (error) {
-                    message.textContent = error.message;
+                    message.textContent =
+                        error.message || "Upload failed. Please try again.";
+                } finally {
+                    uploadButton.disabled = false;
                 }
             });
 
@@ -391,6 +367,7 @@
 
             try {
                 const response = await fetch("/api/audit", {
+                    method: "GET",
                     credentials: "same-origin"
                 });
 
@@ -405,8 +382,7 @@
                 auditList.replaceChildren();
 
                 if (!Array.isArray(logs) || logs.length === 0) {
-                    auditMessage.textContent =
-                        "No activity recorded yet.";
+                    auditMessage.textContent = "No activity recorded yet.";
                     showListMessage(
                         auditList,
                         "No audit records available."
