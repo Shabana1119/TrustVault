@@ -19,6 +19,8 @@ import java.util.Map;
 @RestController
 public class DocumentController {
 
+    private static final String DEMO_USER = "demo";
+
     private final DocumentRepository documentRepository;
     private final AuditLogRepository auditLogRepository;
 
@@ -29,19 +31,24 @@ public class DocumentController {
         this.auditLogRepository = auditLogRepository;
     }
 
+    private String getUsername(Authentication authentication) {
+        return authentication != null && authentication.isAuthenticated()
+                ? authentication.getName()
+                : DEMO_USER;
+    }
+
     @GetMapping("/api/status")
     public Map<String, String> getStatus() {
-        return Map.of(
-                "application", "TrustVault",
-                "status", "running"
-        );
+        return Map.of("application", "TrustVault", "status", "running");
     }
 
     @GetMapping("/api/documents")
     public List<Map<String, String>> getDocuments(
             Authentication authentication) {
 
-        return documentRepository.findByOwner(authentication.getName())
+        String username = getUsername(authentication);
+
+        return documentRepository.findByOwner(username)
                 .stream()
                 .map(document -> {
                     Map<String, String> result = new LinkedHashMap<>();
@@ -60,20 +67,15 @@ public class DocumentController {
 
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Please select a file"
-            );
+                    HttpStatus.BAD_REQUEST, "Please select a file");
         }
 
         if (file.getSize() > 5L * 1024 * 1024) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "File must be 5 MB or smaller"
-            );
+                    HttpStatus.BAD_REQUEST, "File must be 5 MB or smaller");
         }
 
         String name = file.getOriginalFilename();
-
         if (name == null || name.isBlank()) {
             name = "document";
         }
@@ -83,30 +85,24 @@ public class DocumentController {
 
         if (name.isBlank() || name.equals(".") || name.equals("..")) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Invalid filename"
-            );
+                    HttpStatus.BAD_REQUEST, "Invalid filename");
         }
+
+        String username = getUsername(authentication);
 
         Document document = new Document();
         document.setName(name);
-        document.setOwner(authentication.getName());
+        document.setOwner(username);
         document.setSize(file.getSize());
         document.setFileData(file.getBytes());
 
         Document saved = documentRepository.save(document);
-
-        recordAudit(
-                authentication.getName(),
-                "UPLOAD",
-                saved.getName()
-        );
+        recordAudit(username, "UPLOAD", saved.getName());
 
         Map<String, String> result = new LinkedHashMap<>();
         result.put("id", String.valueOf(saved.getId()));
         result.put("name", saved.getName());
         result.put("size", String.valueOf(saved.getSize()));
-
         return result;
     }
 
@@ -116,20 +112,14 @@ public class DocumentController {
             Authentication authentication) {
 
         Document document = getAuthorizedDocument(id, authentication);
-
-        recordAudit(
-                authentication.getName(),
-                "VIEW",
-                document.getName()
-        );
+        recordAudit(getUsername(authentication), "VIEW", document.getName());
 
         String fileName = document.getName().toLowerCase();
         MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
 
         if (fileName.endsWith(".png")) {
             mediaType = MediaType.IMAGE_PNG;
-        } else if (fileName.endsWith(".jpg")
-                || fileName.endsWith(".jpeg")) {
+        } else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
             mediaType = MediaType.IMAGE_JPEG;
         } else if (fileName.endsWith(".gif")) {
             mediaType = MediaType.IMAGE_GIF;
@@ -141,11 +131,8 @@ public class DocumentController {
 
         return ResponseEntity.ok()
                 .contentType(mediaType)
-                .header(
-                        HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\""
-                                + safeHeaderName(document.getName()) + "\""
-                )
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + safeHeaderName(document.getName()) + "\"")
                 .body(document.getFileData());
     }
 
@@ -155,20 +142,12 @@ public class DocumentController {
             Authentication authentication) {
 
         Document document = getAuthorizedDocument(id, authentication);
-
-        recordAudit(
-                authentication.getName(),
-                "DOWNLOAD",
-                document.getName()
-        );
+        recordAudit(getUsername(authentication), "DOWNLOAD", document.getName());
 
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .header(
-                        HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\""
-                                + safeHeaderName(document.getName()) + "\""
-                )
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + safeHeaderName(document.getName()) + "\"")
                 .body(document.getFileData());
     }
 
@@ -176,17 +155,15 @@ public class DocumentController {
             Long id,
             Authentication authentication) {
 
+        String username = getUsername(authentication);
+
         Document document = documentRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Document not found"
-                ));
+                        HttpStatus.NOT_FOUND, "Document not found"));
 
-        if (!document.getOwner().equals(authentication.getName())) {
+        if (!username.equals(document.getOwner())) {
             throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Document not found"
-            );
+                    HttpStatus.NOT_FOUND, "Document not found");
         }
 
         return document;
@@ -199,16 +176,13 @@ public class DocumentController {
     }
 
     private void recordAudit(
-            String username,
-            String action,
-            String documentName) {
+            String username, String action, String documentName) {
 
         AuditLog log = new AuditLog();
         log.setUsername(username);
         log.setAction(action);
         log.setDocumentName(documentName);
         log.setTimestamp(LocalDateTime.now());
-
         auditLogRepository.save(log);
     }
 
@@ -216,20 +190,10 @@ public class DocumentController {
     public List<Map<String, String>> getAuditLogs(
             Authentication authentication) {
 
-        List<AuditLog> logs;
+        String username = getUsername(authentication);
 
-        if (authentication.getAuthorities().stream()
-                .anyMatch(authority ->
-                        authority.getAuthority().equals("ROLE_ADMIN"))) {
-
-            logs = auditLogRepository.findAllByOrderByTimestampDesc();
-
-        } else {
-            logs = auditLogRepository
-                    .findByUsernameOrderByTimestampDesc(
-                            authentication.getName()
-                    );
-        }
+        List<AuditLog> logs = auditLogRepository
+                .findByUsernameOrderByTimestampDesc(username);
 
         return logs.stream()
                 .map(log -> {
